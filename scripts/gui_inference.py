@@ -9,6 +9,8 @@ import sys
 import os
 import time
 import threading
+import subprocess
+import platform
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import numpy as np
@@ -57,6 +59,9 @@ class InferenceGUI(tk.Tk):
         
         self.btn_connect = ttk.Button(conn_frame, text="Connect", command=self.toggle_connection)
         self.btn_connect.pack(side=tk.LEFT)
+
+        self.btn_flash = ttk.Button(conn_frame, text="Flash ESP32", command=self.flash_esp32)
+        self.btn_flash.pack(side=tk.LEFT, padx=(10, 0))
 
         self.lbl_status = ttk.Label(conn_frame, text="Disconnected", foreground="red", font=("Arial", 10, "bold"))
         self.lbl_status.pack(side=tk.RIGHT)
@@ -119,6 +124,48 @@ class InferenceGUI(tk.Tk):
             lbl_pct.pack(side=tk.LEFT)
             
             self.bars.append((progress, lbl_pct, lbl_name))
+
+    def flash_esp32(self):
+        if self.ser and self.ser.is_open:
+            self.toggle_connection()  # Disconnect to free the port for PlatformIO
+            
+        self.lbl_status.config(text="Flashing...", foreground="blue")
+        self.btn_flash.config(state=tk.DISABLED)
+        self.btn_connect.config(state=tk.DISABLED)
+        self.btn_infer.config(state=tk.DISABLED)
+        
+        # Run in thread so GUI doesn't freeze
+        threading.Thread(target=self._flash_worker, daemon=True).start()
+
+    def _flash_worker(self):
+        proj_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "esp32_inference")
+        port = self.port_var.get()
+        
+        # Use sys.executable to run platformio module universally (works on both Windows & Ubuntu)
+        cmd = [sys.executable, "-m", "platformio", "run", "--target", "upload"]
+        if port:
+            cmd.extend(["--upload-port", port])
+
+        try:
+            result = subprocess.run(cmd, cwd=proj_dir, capture_output=True, text=True)
+            if result.returncode == 0:
+                self.after(0, lambda: messagebox.showinfo("Success", "Flashed ESP32 successfully!"))
+                self.after(0, lambda: self.lbl_status.config(text="Flash Success", foreground="green"))
+            else:
+                print(result.stdout)  # Print to terminal for deep debugging
+                print(result.stderr)
+                
+                # Show trailing end of error in GUI
+                err_msg = result.stderr or result.stdout
+                self.after(0, lambda: messagebox.showerror("Upload Error", f"Failed to flash code.\n\n{err_msg[-500:]}"))
+                self.after(0, lambda: self.lbl_status.config(text="Flash Failed", foreground="red"))
+        except Exception as e:
+            self.after(0, lambda: messagebox.showerror("Error", f"Failed to execute platformio:\n{str(e)}"))
+            self.after(0, lambda: self.lbl_status.config(text="Error", foreground="red"))
+        finally:
+            self.after(0, lambda: self.btn_flash.config(state=tk.NORMAL))
+            self.after(0, lambda: self.btn_connect.config(state=tk.NORMAL))
+            self.after(0, self.check_ready)
 
     def refresh_ports(self):
         ports = [port.device for port in serial.tools.list_ports.comports()]

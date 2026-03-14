@@ -41,18 +41,55 @@ tinyCNN-esp/
 
 ## Quick Start (ESP32)
 
-We use **PlatformIO**, replacing the Arduino IDE entirely.
+We use **PlatformIO**, replacing the Arduino IDE entirely. **You can now compile, flash, and test the model entirely from the GUI!**
 
-1. Install PlatformIO: `pip install platformio` (or use VS Code extension)
-2. Build and upload to ESP32:
+### 1. Install Dependencies
+```bash
+pip install -r src/requirements.txt
+```
+
+*(Ubuntu/Linux users only)* - You may need to install Tkinter and grant Serial permissions:
+```bash
+# Install Tkinter for the GUI
+sudo apt update && sudo apt install -y python3-tk
+
+# Grant your user permission to read/write Serial ports
+sudo usermod -a -G dialout $USER
+sudo usermod -a -G plugdev $USER
+
+# Install PlatformIO udev rules for board recognition
+curl -fsSL https://raw.githubusercontent.com/platformio/platformio-core/develop/platformio/assets/system/99-platformio-udev.rules | sudo tee /etc/udev/rules.d/99-platformio-udev.rules
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+*(Note: Restart your PC or log out/in for `dialout` permissions to take effect).*
+
+### 2. Launch the GUI (All-in-one Toolkit)
+Run the following script. It works on both **Windows** and **Ubuntu**.
+```bash
+python scripts/gui_inference.py
+```
+
+### 3. Flash & Run
+1. Select your COM Port (e.g., `COM3` on Windows or `/dev/ttyUSB0` on Ubuntu).
+2. Click **Flash ESP32** directly in the GUI to compile the C inference engine and upload it to your board.
+3. Click **Connect**, browse for an image (e.g., `image/image.png`), and click **Run Inference**!
+
+---
+
+## Alternative: Command Line Interface (CLI)
+
+If you prefer using the terminal instead of the GUI:
+
+1. Build and upload to ESP32 manually:
    ```bash
    cd esp32_inference
    pio run --target upload
    ```
-3. Test using the interactive Serial Inference script (send custom images from PC):
+2. Test using the interactive Serial Inference script:
    ```bash
    cd ..
-   python scripts/serial_inference.py --port COM3 --interactive
+   python scripts/serial_inference.py --port COM3 --interactive  # Use /dev/ttyUSB0 on Linux
    ```
 
 ## Scripts Usage
