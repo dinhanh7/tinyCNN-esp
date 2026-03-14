@@ -1,4 +1,4 @@
 .pio/build/esp32dev/FrameworkArduino/USBCDC.cpp.o: \
- /home/abuntu/.platformio/packages/framework-arduinoespressif32/cores/esp32/USBCDC.cpp \
- /home/abuntu/.platformio/packages/framework-arduinoespressif32/cores/esp32/USB.h \
- /home/abuntu/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/dio_qspi/include/sdkconfig.h
+ C:/Users/WINDOWS/.platformio/packages/framework-arduinoespressif32/cores/esp32/USBCDC.cpp \
+ C:/Users/WINDOWS/.platformio/packages/framework-arduinoespressif32/cores/esp32/USB.h \
+ C:/Users/WINDOWS/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/dio_qspi/include/sdkconfig.h

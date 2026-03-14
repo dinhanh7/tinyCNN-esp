@@ -31,12 +31,13 @@ class InferenceGUI(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("TinyCNN ESP32 - Serial Inference")
-        self.geometry("700x500")
+        self.geometry("700x560")
         self.resizable(False, False)
 
         self.ser = None
         self.image_path = None
         self.photo_image = None
+        self.is_scanning = False
         
         self.setup_ui()
         self.refresh_ports()
@@ -49,22 +50,27 @@ class InferenceGUI(tk.Tk):
         conn_frame = ttk.LabelFrame(self, text="Connection", padding=10)
         conn_frame.pack(fill=tk.X, pady=(0, 10))
 
-        ttk.Label(conn_frame, text="COM Port:").pack(side=tk.LEFT, padx=(0, 5))
+        conn_row = ttk.Frame(conn_frame)
+        conn_row.pack(fill=tk.X)
+
+        ttk.Label(conn_row, text="COM Port:").pack(side=tk.LEFT, padx=(0, 5))
         
         self.port_var = tk.StringVar()
-        self.port_combo = ttk.Combobox(conn_frame, textvariable=self.port_var, state="readonly", width=15)
+        self.port_combo = ttk.Combobox(conn_row, textvariable=self.port_var, state="readonly", width=15)
         self.port_combo.pack(side=tk.LEFT, padx=(0, 10))
 
-        ttk.Button(conn_frame, text="Refresh", command=self.refresh_ports).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(conn_row, text="Refresh", command=self.refresh_ports).pack(side=tk.LEFT, padx=(0, 10))
+        self.btn_scan = ttk.Button(conn_row, text="Scan ESP32", command=self.scan_active_esp32)
+        self.btn_scan.pack(side=tk.LEFT, padx=(0, 10))
         
-        self.btn_connect = ttk.Button(conn_frame, text="Connect", command=self.toggle_connection)
+        self.btn_connect = ttk.Button(conn_row, text="Connect", command=self.toggle_connection)
         self.btn_connect.pack(side=tk.LEFT)
 
-        self.btn_flash = ttk.Button(conn_frame, text="Flash ESP32", command=self.flash_esp32)
+        self.btn_flash = ttk.Button(conn_row, text="Flash ESP32", command=self.flash_esp32)
         self.btn_flash.pack(side=tk.LEFT, padx=(10, 0))
 
         self.lbl_status = ttk.Label(conn_frame, text="Disconnected", foreground="red", font=("Arial", 10, "bold"))
-        self.lbl_status.pack(side=tk.RIGHT)
+        self.lbl_status.pack(anchor=tk.W, pady=(6, 0))
 
         # --- Main frame (Split left/right) ---
         main_frame = ttk.Frame(self)
@@ -168,10 +174,85 @@ class InferenceGUI(tk.Tk):
             self.after(0, self.check_ready)
 
     def refresh_ports(self):
-        ports = [port.device for port in serial.tools.list_ports.comports()]
+        ports = sorted([port.device for port in serial.tools.list_ports.comports()])
         self.port_combo['values'] = ports
         if ports and not self.port_var.get():
             self.port_combo.current(0)
+
+    def scan_active_esp32(self):
+        if self.is_scanning:
+            return
+        if self.ser and self.ser.is_open:
+            messagebox.showinfo("Scan ESP32", "Please disconnect current serial connection before scanning.")
+            return
+
+        ports = sorted([port.device for port in serial.tools.list_ports.comports()])
+        if not ports:
+            messagebox.showwarning("Scan ESP32", "No serial ports found.")
+            return
+
+        self.is_scanning = True
+        self.lbl_status.config(text="Scanning ports...", foreground="blue")
+        self.btn_scan.config(state=tk.DISABLED)
+        self.btn_connect.config(state=tk.DISABLED)
+        self.btn_flash.config(state=tk.DISABLED)
+
+        threading.Thread(target=self._scan_worker, args=(ports,), daemon=True).start()
+
+    def _probe_port_for_esp32(self, port):
+        try:
+            with serial.Serial(port, 115200, timeout=0.25, write_timeout=0.5) as test_ser:
+                # Opening a port often resets ESP32; wait long enough for setup() to finish.
+                deadline = time.time() + 7.0
+                last_ping = 0.0
+                while time.time() < deadline:
+                    now = time.time()
+                    if now - last_ping >= 0.35:
+                        test_ser.write(b"IMG\n")
+                        test_ser.flush()
+                        last_ping = now
+
+                    if test_ser.in_waiting:
+                        line = test_ser.readline().decode("utf-8", errors="ignore").strip()
+                        if line == "READY":
+                            return True
+
+                    time.sleep(0.02)
+                return False
+        except (serial.SerialException, OSError):
+            return False
+
+    def _scan_worker(self, ports):
+        active_ports = []
+        for port in ports:
+            if self._probe_port_for_esp32(port):
+                active_ports.append(port)
+
+        def finish_scan():
+            self.is_scanning = False
+            self.btn_scan.config(state=tk.NORMAL)
+            self.btn_connect.config(state=tk.NORMAL)
+            self.btn_flash.config(state=tk.NORMAL)
+
+            if active_ports:
+                self.port_combo['values'] = active_ports
+                self.port_var.set(active_ports[0])
+                self.lbl_status.config(text=f"Found {len(active_ports)} ESP32", foreground="green")
+                if len(active_ports) == 1:
+                    messagebox.showinfo("Scan ESP32", f"Detected ESP32 on {active_ports[0]}.")
+                else:
+                    messagebox.showinfo("Scan ESP32", "Detected ESP32 ports: " + ", ".join(active_ports))
+            else:
+                self.refresh_ports()
+                self.lbl_status.config(text="No ESP32 detected", foreground="red")
+                messagebox.showwarning(
+                    "Scan ESP32",
+                    "No active ESP32 detected. Check cable/driver, then try Refresh or Flash.",
+                )
+
+            self.check_ready()
+
+        self.after(0, finish_scan)
 
     def toggle_connection(self):
         if self.ser and self.ser.is_open:
